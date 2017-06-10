@@ -11,6 +11,8 @@ static Display *dpy;
 #define BAT_ST_FILE "/sys/devices/platform/smapi/BAT0/state"
 #define BAT_RP_FILE "/sys/devices/platform/smapi/BAT0/remaining_percent"
 #define BAT_RM_FILE "/sys/devices/platform/smapi/BAT0/remaining_running_time_now"
+#define BAT_RCM_FILE "/sys/devices/platform/smapi/BAT0/remaining_charging_time"
+
 #define TEMP_FILE	"/sys/class/thermal/thermal_zone1/temp"
 #define FAN_FILE	"/proc/acpi/ibm/fan"
 
@@ -97,6 +99,7 @@ int getFanRPM()
 	while(!feof(fp)) {
 		fgets(line, sizeof(line), fp);
 		if(fscanf(fp, "speed: %d\n", &rpm) == 1) {
+			fclose(fp);
 			return rpm;
 		}
 	}
@@ -138,7 +141,9 @@ int main()
 		}
 		// charging //
 		else {
-		
+			remaining_mins = getBatRemaining(BAT_RCM_FILE);
+			len += snprintf(buf+len, sizeof(buf)-len, "AC: %2d%% %02d:%02d | ",
+				remaining_percent, remaining_mins / 60, remaining_mins % 60);
 		}
 
 		len += getDateTime(buf + len, sizeof(buf) - len);
