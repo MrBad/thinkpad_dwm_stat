@@ -119,6 +119,8 @@ int main()
 	}
 	
 	for(;;) {
+		sleep(1);	// sleep first, because we have some continue next and i don't 
+					// want to read too fast
 		len = 0;
 		// fan, temperature //
 		len += snprintf(buf, sizeof(buf) - len, "%dC %d RPM | ", getTemp(), getFanRPM());
@@ -139,7 +141,7 @@ int main()
 			len += snprintf(buf+len, sizeof(buf)-len, "AC: %2d%% | ", 
 					remaining_percent);
 		}
-		// charging //
+		// charging, show time left until full //
 		else {
 			remaining_mins = getBatRemaining(BAT_RCM_FILE);
 			len += snprintf(buf+len, sizeof(buf)-len, "AC: %2d%% %02d:%02d | ",
@@ -147,8 +149,8 @@ int main()
 		}
 
 		len += getDateTime(buf + len, sizeof(buf) - len);
+		// display //
 		setStatus(buf);
-		sleep(1);
 	}
 	
 	XCloseDisplay(dpy);
