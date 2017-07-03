@@ -23,15 +23,15 @@ void setStatus(char *str)
 }
 
 
-
 // return len of the writed date in buf
 int getDateTime(char *buf, int buf_size) 
 {
 	time_t ts;
 	struct tm *tm;
+	int len;
+
 	ts = time(NULL);
 	tm = localtime(&ts);
-	int len;
 	len = strftime(buf, buf_size-1, "%a, %b %d %H:%M:%S", tm);
 	if(!len) {
 		fprintf(stderr, "strftime return 0\n");
@@ -96,9 +96,10 @@ int getFanRPM()
 		perror("fopen");
 		return 0;
 	}
+
 	while(!feof(fp)) {
 		fgets(line, sizeof(line), fp);
-		if(fscanf(fp, "speed: %d\n", &rpm) == 1) {
+		if(sscanf(line, "speed: %d\n", &rpm) == 1) {
 			fclose(fp);
 			return rpm;
 		}
@@ -123,7 +124,9 @@ int main()
 					// want to read too fast
 		len = 0;
 		// fan, temperature //
-		len += snprintf(buf, sizeof(buf) - len, "%dC %d RPM | ", getTemp(), getFanRPM());
+		len += snprintf(buf, sizeof(buf) - len, "%dC %d RPM | ", 
+				getTemp(), getFanRPM());
+		
 		// power //
 		state = getState();
 		remaining_percent = getBatRemaining(BAT_RP_FILE);
