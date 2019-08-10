@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <ctype.h>
 #include <X11/Xlib.h>
 #include <time.h>
 #include <unistd.h>
@@ -8,20 +9,35 @@
 static Display *dpy;
 
 #define BUFSIZE 256
-#define BAT_ST_FILE "/sys/devices/platform/smapi/BAT0/state"
-#define BAT_RP_FILE "/sys/devices/platform/smapi/BAT0/remaining_percent"
-#define BAT_RM_FILE "/sys/devices/platform/smapi/BAT0/remaining_running_time_now"
-#define BAT_RCM_FILE "/sys/devices/platform/smapi/BAT0/remaining_charging_time"
+#define BAT_STATUS_FILE "/sys/class/power_supply/BAT0/status"
+#define BAT_ENERGY_NOW_FILE "/sys/class/power_supply/BAT0/energy_now"
+#define BAT_ENERGY_FULL_FILE "/sys/class/power_supply/BAT0/energy_full"
+#define BAT_POWER_NOW_FILE "/sys/class/power_supply/BAT0/power_now"
+#define BAT_CAPACITY_FILE "/sys/class/power_supply/BAT0/capacity"
+#define TEMPERATURE_FILE "/sys/class/thermal/thermal_zone0/temp"
+#define FAN_FILE "/proc/acpi/ibm/fan"
 
-#define TEMP_FILE	"/sys/class/thermal/thermal_zone1/temp"
-#define FAN_FILE	"/proc/acpi/ibm/fan"
+float readFloat(const char *file)
+{
+	float ret = 0;
+	FILE *fp;
+	if (!(fp = fopen(file, "r"))) {
+		perror("fopen");
+		return 0;
+	}
+	if (fscanf(fp, "%f", &ret) != 1) {
+		fclose(fp);
+		return 0;
+	}
+	fclose(fp);
+	return ret;
+}
 
 void setStatus(char *str) 
 {
 	XStoreName(dpy, DefaultRootWindow(dpy), str);
 	XSync(dpy, False);
 }
-
 
 // return len of the writed date in buf
 int getDateTime(char *buf, int buf_size) 
@@ -44,47 +60,44 @@ char getState()
 {
 	FILE *fp;
 	char state;
-	if(!(fp = fopen(BAT_ST_FILE, "r"))) {
+	if(!(fp = fopen(BAT_STATUS_FILE, "r"))) {
 		perror("fopen");
 		return 0;
 	}
 	state = fgetc(fp);
 	fclose(fp);
-	return state;
+	return tolower(state);
 }
 
-
-int getBatRemaining(const char *file) 
+int getBatPercent() 
 {
-	FILE *fp;
-	int remaining;
-	if(!(fp = fopen(file, "r"))) {
-		perror("fopen");
+	return readFloat(BAT_CAPACITY_FILE);
+}
+
+int getBatRemainingMins()
+{
+	float energy_now = readFloat(BAT_ENERGY_NOW_FILE);
+	float power_now = readFloat(BAT_POWER_NOW_FILE);
+	if (power_now == 0) {
 		return 0;
 	}
-	if(fscanf(fp, "%d", &remaining) != 1) {
-		fclose(fp);
+	return 60 * energy_now / power_now;
+}
+
+int getBatRemainigChargingMins()
+{
+	float energy_full = readFloat(BAT_ENERGY_FULL_FILE);
+	float energy_now = readFloat(BAT_ENERGY_NOW_FILE);
+	float power_now = readFloat(BAT_POWER_NOW_FILE);
+	if (power_now == 0) {
 		return 0;
 	}
-	fclose(fp);
-	return remaining;
+	return 60 * (energy_full - energy_now) / power_now;
 }
 
 int getTemp() 
 {
-	FILE *fp;
-	int temp;
-	if(!(fp = fopen(TEMP_FILE, "r"))) {
-		perror("fopen");
-		return 0;
-	}
-	if(fscanf(fp, "%2d", &temp) != 1) {
-		perror("fscanf");
-		fclose(fp);
-		return 0;
-	}
-	fclose(fp);
-	return temp;
+	return readFloat(TEMPERATURE_FILE) / 1000;
 }
 
 int getFanRPM()
@@ -129,26 +142,23 @@ int main()
 		
 		// power //
 		state = getState();
-		remaining_percent = getBatRemaining(BAT_RP_FILE);
-		// state is on battery discharging //
-		if(state == 'd') {
-			remaining_mins = getBatRemaining(BAT_RM_FILE);
+		remaining_percent = getBatPercent();
+		// state is battery charging //
+		if (state == 'c') {
+			remaining_mins = getBatRemainigChargingMins();
+			len += snprintf(buf+len, sizeof(buf)-len, "AC: %2d%% %02d:%02d | ",
+				remaining_percent, remaining_mins / 60, remaining_mins % 60);
+		}
+		// state is battery discharging //
+		else if (state == 'd') {
+			remaining_mins = getBatRemainingMins();
 			if(remaining_mins == 0 || remaining_percent == 0) {
 				continue;
 			}
 			len += snprintf(buf+len, sizeof(buf)-len, "BAT: %2d%% %02d:%02d | ",
 				remaining_percent, remaining_mins / 60, remaining_mins % 60);
-		}
-		// idle - show battery percent //
-		else if(state == 'i') {
-			len += snprintf(buf+len, sizeof(buf)-len, "AC: %2d%% | ", 
-					remaining_percent);
-		}
-		// charging, show time left until full //
-		else {
-			remaining_mins = getBatRemaining(BAT_RCM_FILE);
-			len += snprintf(buf+len, sizeof(buf)-len, "AC: %2d%% %02d:%02d | ",
-				remaining_percent, remaining_mins / 60, remaining_mins % 60);
+		} else {
+			len += snprintf(buf+len, sizeof(buf)-len, "AC: %2d%% | ", remaining_percent);
 		}
 
 		len += getDateTime(buf + len, sizeof(buf) - len);
