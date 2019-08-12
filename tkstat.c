@@ -4,7 +4,7 @@
 #include <X11/Xlib.h>
 #include <time.h>
 #include <unistd.h>
-
+#include <signal.h>
 
 static Display *dpy;
 
@@ -121,11 +121,27 @@ int getFanRPM()
 	return rpm;	
 }
 
+void sigHandler(int signo) {
+	if(signo == SIGTERM || signo == SIGINT) {
+		printf("Receiving term\n");
+		setStatus("Powering off              ");
+		exit(0);
+	} else {
+		printf("got signo: %d\n", signo);
+	}
+}
+
 int main() 
 {
 	char state;
 	char buf[BUFSIZE];
 	int remaining_mins, remaining_percent, len;
+
+	// setup signals //
+	if(((signal(SIGTERM, sigHandler) == SIG_ERR)) || (signal(SIGINT, sigHandler) == SIG_ERR)) {
+		fprintf(stderr, "Cannot setup signals\n");
+		return 1;
+	}
 
 	if(!(dpy = XOpenDisplay(NULL))) {
 		fprintf(stderr, "Cannot open display\n");
